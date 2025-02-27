@@ -13,14 +13,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/internal/osnadmin"
 	"github.com/hyperledger/fabric/protoutil"
+	"google.golang.org/protobuf/proto"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -55,7 +54,7 @@ func executeForArgs(args []string) (output string, exit int, err error) {
 	list := channel.Command("list", "List channel information for an Ordering Service Node (OSN). If the channelID flag is set, more detailed information will be provided for that channel.")
 	listChannelID := list.Flag("channelID", "Channel ID").Short('c').String()
 
-	remove := channel.Command("remove", "Remove an Ordering Service Node (OSN) from a channel.")
+	remove := channel.Command("remove", "Remove a channel from an Ordering Service Node (OSN).")
 	removeChannelID := remove.Flag("channelID", "Channel ID").Short('c').Required().String()
 
 	command, err := app.Parse(args)
@@ -76,7 +75,7 @@ func executeForArgs(args []string) (output string, exit int, err error) {
 		osnURL = fmt.Sprintf("https://%s", *orderer)
 		var err error
 		caCertPool = x509.NewCertPool()
-		caFilePEM, err := ioutil.ReadFile(*caFile)
+		caFilePEM, err := os.ReadFile(*caFile)
 		if err != nil {
 			return "", 1, fmt.Errorf("reading orderer CA certificate: %s", err)
 		}
@@ -94,7 +93,7 @@ func executeForArgs(args []string) (output string, exit int, err error) {
 
 	var marshaledConfigBlock []byte
 	if *configBlockPath != "" {
-		marshaledConfigBlock, err = ioutil.ReadFile(*configBlockPath)
+		marshaledConfigBlock, err = os.ReadFile(*configBlockPath)
 		if err != nil {
 			return "", 1, fmt.Errorf("reading config block: %s", err)
 		}
@@ -153,7 +152,7 @@ func responseOutput(showStatus bool, statusCode int, responseBody []byte) (strin
 }
 
 func readBodyBytes(body io.ReadCloser) ([]byte, error) {
-	bodyBytes, err := ioutil.ReadAll(body)
+	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, fmt.Errorf("reading http response body: %s", err)
 	}

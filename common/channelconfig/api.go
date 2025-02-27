@@ -9,9 +9,9 @@ package channelconfig
 import (
 	"time"
 
-	cb "github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	pb "github.com/hyperledger/fabric-protos-go/peer"
+	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/common/configtx"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/msp"
@@ -67,7 +67,8 @@ type Channel interface {
 	// Merkle tree to compute the BlockData hash
 	BlockDataHashingStructureWidth() uint32
 
-	// OrdererAddresses returns the list of valid orderer addresses to connect to to invoke Broadcast/Deliver
+	// OrdererAddresses returns the list of valid global orderer addresses (does not include org-specific orderer endpoints)
+	// Deprecated
 	OrdererAddresses() []string
 
 	// Capabilities defines the capabilities for a channel
@@ -194,6 +195,10 @@ type ApplicationCapabilities interface {
 	// KeyLevelEndorsement returns true if this channel supports endorsement
 	// policies expressible at a ledger key granularity, as described in FAB-8812
 	KeyLevelEndorsement() bool
+
+	// PurgePvtData returns true if this channel supports purging of private
+	// data entries
+	PurgePvtData() bool
 }
 
 // OrdererCapabilities defines the capabilities for the orderer portion of a channel

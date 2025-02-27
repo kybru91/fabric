@@ -15,16 +15,15 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
-	proto "github.com/hyperledger/fabric-protos-go/gossip"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset"
-	mspproto "github.com/hyperledger/fabric-protos-go/msp"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	tspb "github.com/hyperledger/fabric-protos-go/transientstore"
-	"github.com/hyperledger/fabric/bccsp/factory"
-	"github.com/hyperledger/fabric/common/metrics/disabled"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	proto "github.com/hyperledger/fabric-protos-go-apiv2/gossip"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset/kvrwset"
+	mspproto "github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	tspb "github.com/hyperledger/fabric-protos-go-apiv2/transientstore"
 	util2 "github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/common/privdata"
 	"github.com/hyperledger/fabric/core/ledger"
@@ -41,6 +40,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	pb "google.golang.org/protobuf/proto"
 )
 
 var testConfig = CoordinatorConfig{
@@ -141,7 +141,7 @@ func (f *fetcherMock) fetch(dig2src dig2sources) (*privdatacommon.FetchedPvtData
 			uniqueEndorsements[string(endorsement.Endorser)] = struct{}{}
 		}
 	}
-	require.True(f.t, digests(f.expectedDigests).Equal(digests(dig2src.keys())))
+	require.True(f.t, digests(f.expectedDigests).Equal(dig2src.keys()))
 	require.Equal(f.t, len(f.expectedEndorsers), len(uniqueEndorsements))
 	args := f.Called(dig2src)
 	if args.Get(1) == nil {
@@ -623,7 +623,7 @@ func TestCoordinatorStoreInvalidBlock(t *testing.T) {
 	pvtData := pdFactory.create()
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -708,7 +708,7 @@ func TestCoordinatorStoreInvalidBlock(t *testing.T) {
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 
 	capabilityProvider = &privdatamocks.CapabilityProvider{}
-	appCapability = &privdatamocks.AppCapabilities{}
+	appCapability = &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(false)
 	coordinator = NewCoordinator(mspID, Support{
@@ -765,7 +765,7 @@ func TestCoordinatorStoreInvalidBlock(t *testing.T) {
 	pvtData = pdFactory.addRWSet().addNSRWSet("ns1", "c1", "c2").create()
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 	capabilityProvider = &privdatamocks.CapabilityProvider{}
-	appCapability = &privdatamocks.AppCapabilities{}
+	appCapability = &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	digKeys = []privdatacommon.DigKey{}
@@ -957,7 +957,7 @@ func TestCoordinatorToFilterOutPvtRWSetsWithWrongHash(t *testing.T) {
 	metrics := metrics.NewGossipMetrics(&disabled.Provider{}).PrivdataMetrics
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1079,7 +1079,7 @@ func TestCoordinatorStoreBlock(t *testing.T) {
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1353,7 +1353,7 @@ func TestCoordinatorStoreBlockWhenPvtDataExistInLedger(t *testing.T) {
 	metrics := metrics.NewGossipMetrics(&disabled.Provider{}).PrivdataMetrics
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1465,7 +1465,7 @@ func TestProceedWithoutPrivateData(t *testing.T) {
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1540,7 +1540,7 @@ func TestProceedWithInEligiblePrivateData(t *testing.T) {
 	metrics := metrics.NewGossipMetrics(&disabled.Provider{}).PrivdataMetrics
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1587,7 +1587,7 @@ func TestCoordinatorGetBlocks(t *testing.T) {
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 
@@ -1713,7 +1713,7 @@ func TestPurgeBelowHeight(t *testing.T) {
 	metrics := metrics.NewGossipMetrics(&disabled.Provider{}).PrivdataMetrics
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1760,7 +1760,7 @@ func TestCoordinatorStorePvtData(t *testing.T) {
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1859,7 +1859,7 @@ func TestIgnoreReadOnlyColRWSets(t *testing.T) {
 	metrics := metrics.NewGossipMetrics(&disabled.Provider{}).PrivdataMetrics
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{
@@ -1944,7 +1944,7 @@ func TestCoordinatorMetrics(t *testing.T) {
 	committer.On("DoesPvtDataInfoExistInLedger", mock.Anything).Return(false, nil)
 
 	capabilityProvider := &privdatamocks.CapabilityProvider{}
-	appCapability := &privdatamocks.AppCapabilities{}
+	appCapability := &privdatamocks.ApplicationCapabilities{}
 	capabilityProvider.On("Capabilities").Return(appCapability)
 	appCapability.On("StorePvtDataOfInvalidTx").Return(true)
 	coordinator := NewCoordinator(mspID, Support{

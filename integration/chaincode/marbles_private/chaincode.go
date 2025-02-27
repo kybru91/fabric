@@ -11,8 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/hyperledger/fabric-chaincode-go/shim"
-	pb "github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric-chaincode-go/v2/pkg/statebased"
+	"github.com/hyperledger/fabric-chaincode-go/v2/shim"
+	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
 )
 
 // MarblesPrivateChaincode example Chaincode implementation
@@ -34,13 +35,13 @@ type marblePrivateDetails struct {
 
 // Init initializes chaincode
 // ===========================
-func (t *MarblesPrivateChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
+func (t *MarblesPrivateChaincode) Init(stub shim.ChaincodeStubInterface) *pb.Response {
 	return shim.Success(nil)
 }
 
 // Invoke - Our entry point for Invocations
 // ========================================
-func (t *MarblesPrivateChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
+func (t *MarblesPrivateChaincode) Invoke(stub shim.ChaincodeStubInterface) *pb.Response {
 	function, args := stub.GetFunctionAndParameters()
 	fmt.Println("invoke is running " + function)
 
@@ -61,6 +62,9 @@ func (t *MarblesPrivateChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Re
 	case "delete":
 		// delete a marble
 		return t.delete(stub, args)
+	case "purge":
+		// purge a marble
+		return t.purge(stub, args)
 	case "getMarblesByRange":
 		// get marbles based on range query
 		return t.getMarblesByRange(stub, args)
@@ -70,6 +74,9 @@ func (t *MarblesPrivateChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Re
 	case "getMarblePrivateDetailsHash":
 		// get private data hash for collectionMarblePrivateDetails
 		return t.getMarblePrivateDetailsHash(stub, args)
+	case "setStateBasedEndorsementPolicy":
+		// get private data hash for collectionMarblePrivateDetails
+		return t.setStateBasedEndorsementPolicy(stub, args)
 	case "checkEndorsingOrg":
 		// check mspid of the current peer
 		return t.checkEndorsingOrg(stub)
@@ -83,7 +90,7 @@ func (t *MarblesPrivateChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Re
 // ============================================================
 // initMarble - create a new marble, store into chaincode state
 // ============================================================
-func (t *MarblesPrivateChaincode) initMarble(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) initMarble(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	var err error
 
 	type marbleTransientInput struct {
@@ -206,7 +213,7 @@ func (t *MarblesPrivateChaincode) initMarble(stub shim.ChaincodeStubInterface, a
 // ===============================================
 // readMarble - read a marble from chaincode state
 // ===============================================
-func (t *MarblesPrivateChaincode) readMarble(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) readMarble(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	var name, jsonResp string
 	var err error
 
@@ -230,7 +237,7 @@ func (t *MarblesPrivateChaincode) readMarble(stub shim.ChaincodeStubInterface, a
 // ===============================================
 // readMarblereadMarblePrivateDetails - read a marble private details from chaincode state
 // ===============================================
-func (t *MarblesPrivateChaincode) readMarblePrivateDetails(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) readMarblePrivateDetails(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	var name, jsonResp string
 	var err error
 
@@ -254,7 +261,7 @@ func (t *MarblesPrivateChaincode) readMarblePrivateDetails(stub shim.ChaincodeSt
 // ===============================================
 // getMarbleHash - get marble private data hash for collectionMarbles from chaincode state
 // ===============================================
-func (t *MarblesPrivateChaincode) getMarbleHash(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) getMarbleHash(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	var name, jsonResp string
 	var err error
 
@@ -278,7 +285,7 @@ func (t *MarblesPrivateChaincode) getMarbleHash(stub shim.ChaincodeStubInterface
 // ===============================================
 // getMarblePrivateDetailsHash - get marble private data hash for collectionMarblePrivateDetails from chaincode state
 // ===============================================
-func (t *MarblesPrivateChaincode) getMarblePrivateDetailsHash(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) getMarblePrivateDetailsHash(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	var name, jsonResp string
 	var err error
 
@@ -302,7 +309,7 @@ func (t *MarblesPrivateChaincode) getMarblePrivateDetailsHash(stub shim.Chaincod
 // ==================================================
 // delete - remove a marble key/value pair from state
 // ==================================================
-func (t *MarblesPrivateChaincode) delete(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) delete(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	fmt.Println("- start delete marble")
 
 	type marbleDeleteTransientInput struct {
@@ -346,7 +353,7 @@ func (t *MarblesPrivateChaincode) delete(stub shim.ChaincodeStubInterface, args 
 	}
 
 	var marbleToDelete marble
-	err = json.Unmarshal([]byte(valAsbytes), &marbleToDelete)
+	err = json.Unmarshal(valAsbytes, &marbleToDelete)
 	if err != nil {
 		return shim.Error("Failed to decode JSON of: " + string(valAsbytes))
 	}
@@ -377,10 +384,89 @@ func (t *MarblesPrivateChaincode) delete(stub shim.ChaincodeStubInterface, args 
 	return shim.Success(nil)
 }
 
+// =====================================================
+// purge - remove a marble key/value pair from state and
+// remove all trace of private details
+// =====================================================
+func (t *MarblesPrivateChaincode) purge(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
+	fmt.Println("- start purge marble")
+
+	type marblePurgeTransientInput struct {
+		Name string `json:"name"`
+	}
+
+	if len(args) != 0 {
+		return shim.Error("Incorrect number of arguments. Private marble name must be passed in transient map.")
+	}
+
+	transMap, err := stub.GetTransient()
+	if err != nil {
+		return shim.Error("Error getting transient: " + err.Error())
+	}
+
+	marblePurgeJsonBytes, ok := transMap["marble_purge"]
+	if !ok {
+		return shim.Error("marble_purge must be a key in the transient map")
+	}
+
+	if len(marblePurgeJsonBytes) == 0 {
+		return shim.Error("marble_purge value in the transient map must be a non-empty JSON string")
+	}
+
+	var marblePurgeInput marblePurgeTransientInput
+	err = json.Unmarshal(marblePurgeJsonBytes, &marblePurgeInput)
+	if err != nil {
+		return shim.Error("Failed to decode JSON of: " + string(marblePurgeJsonBytes))
+	}
+
+	if len(marblePurgeInput.Name) == 0 {
+		return shim.Error("name field must be a non-empty string")
+	}
+
+	// to maintain the color~name index, we need to read the marble first and get its color
+	valAsbytes, err := stub.GetPrivateData("collectionMarbles", marblePurgeInput.Name) // get the marble from chaincode state
+	if err != nil {
+		return shim.Error("Failed to get state for " + marblePurgeInput.Name)
+	} else if valAsbytes == nil {
+		return shim.Error("Marble does not exist: " + marblePurgeInput.Name)
+	}
+
+	var marbleToPurge marble
+	err = json.Unmarshal(valAsbytes, &marbleToPurge)
+	if err != nil {
+		return shim.Error("Failed to decode JSON of: " + string(valAsbytes))
+	}
+
+	// purge the marble from state
+	err = stub.PurgePrivateData("collectionMarbles", marblePurgeInput.Name)
+	if err != nil {
+		return shim.Error("Failed to purge state:" + err.Error())
+	}
+
+	// Also purge the marble from the color~name index
+	indexName := "color~name"
+	colorNameIndexKey, err := stub.CreateCompositeKey(indexName, []string{marbleToPurge.Color, marbleToPurge.Name})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	err = stub.PurgePrivateData("collectionMarbles", colorNameIndexKey)
+	if err != nil {
+		return shim.Error("Failed to purge state:" + err.Error())
+	}
+
+	// Finally, purge private details of marble
+	err = stub.PurgePrivateData("collectionMarblePrivateDetails", marblePurgeInput.Name)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	return shim.Success(nil)
+}
+
 // ===========================================================
 // transfer a marble by setting a new owner name on the marble
 // ===========================================================
-func (t *MarblesPrivateChaincode) transferMarble(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) transferMarble(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	fmt.Println("- start transfer marble")
 
 	type marbleTransferTransientInput struct {
@@ -454,7 +540,7 @@ func (t *MarblesPrivateChaincode) transferMarble(stub shim.ChaincodeStubInterfac
 // time and commit time.
 // Therefore, range queries are a safe option for performing update transactions based on query results.
 // ===========================================================================================
-func (t *MarblesPrivateChaincode) getMarblesByRange(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *MarblesPrivateChaincode) getMarblesByRange(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
 	if len(args) < 2 {
 		return shim.Error("Incorrect number of arguments. Expecting 2")
 	}
@@ -498,8 +584,77 @@ func (t *MarblesPrivateChaincode) getMarblesByRange(stub shim.ChaincodeStubInter
 	return shim.Success(buffer.Bytes())
 }
 
+// ============================================================
+// setStateBasedEndorsementPolicy - set key based endorsement policy
+// ============================================================
+func (t *MarblesPrivateChaincode) setStateBasedEndorsementPolicy(stub shim.ChaincodeStubInterface, args []string) *pb.Response {
+	fmt.Println("- start set marble endorsement policy")
+
+	type marblePolicyTransientInput struct {
+		Name string `json:"name"`
+		Org  string `json:"org"`
+	}
+
+	if len(args) != 0 {
+		return shim.Error("Incorrect number of arguments. Private marble data must be passed in transient map.")
+	}
+
+	transMap, err := stub.GetTransient()
+	if err != nil {
+		return shim.Error("Error getting transient: " + err.Error())
+	}
+
+	marblePolicyJsonBytes, ok := transMap["marble_ep"]
+	if !ok {
+		return shim.Error("marble_ep must be a key in the transient map")
+	}
+
+	if len(marblePolicyJsonBytes) == 0 {
+		return shim.Error("marble_purge value in the transient map must be a non-empty JSON string")
+	}
+
+	var marblePolicyInput marblePolicyTransientInput
+	err = json.Unmarshal(marblePolicyJsonBytes, &marblePolicyInput)
+	if err != nil {
+		return shim.Error("Failed to decode JSON of: " + string(marblePolicyJsonBytes))
+	}
+
+	if len(marblePolicyInput.Name) == 0 {
+		return shim.Error("name field must be a non-empty string")
+	}
+
+	if len(marblePolicyInput.Org) == 0 {
+		return shim.Error("org field must be a non-empty string")
+	}
+
+	// Set new endorsement policy
+	var epBytes []byte
+	ep, err := statebased.NewStateEP(epBytes)
+	if err != nil {
+		return shim.Error("Error creating state-based endorsement policy: " + err.Error())
+	}
+
+	err = ep.AddOrgs(statebased.RoleTypePeer, marblePolicyInput.Org)
+	if err != nil {
+		return shim.Error("Error updating state-based endorsement policy: " + err.Error())
+	}
+
+	epBytes, err = ep.Policy()
+	if err != nil {
+		return shim.Error("Error encoding state-based endorsement policy: " + err.Error())
+	}
+
+	err = stub.SetPrivateDataValidationParameter("collectionMarbles", marblePolicyInput.Name, epBytes)
+	if err != nil {
+		return shim.Error("Error setting private data key-level endorsement policy: " + err.Error())
+	}
+
+	fmt.Println("- end set marble endorsement policy (success)")
+	return shim.Success(nil)
+}
+
 // CheckEndorsingOrg checks that the peer org is present in the given transient data
-func (t *MarblesPrivateChaincode) checkEndorsingOrg(stub shim.ChaincodeStubInterface) pb.Response {
+func (t *MarblesPrivateChaincode) checkEndorsingOrg(stub shim.ChaincodeStubInterface) *pb.Response {
 	transient, err := stub.GetTransient()
 	if err != nil {
 		return shim.Error(fmt.Sprintf("failed to get transient data: %v", err))

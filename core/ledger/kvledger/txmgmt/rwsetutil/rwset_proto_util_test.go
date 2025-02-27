@@ -20,12 +20,12 @@ import (
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset/kvrwset"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
 	"github.com/hyperledger/fabric/core/ledger/util"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestTxRWSetMarshalUnmarshal(t *testing.T) {
@@ -188,9 +188,9 @@ func sampleCollHashedRwSet(collectionName string) *CollHashedRwSet {
 	return collHashedRwSet
 }
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // tests for private read-write set
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 
 func TestTxPvtRwSetConversion(t *testing.T) {
 	txPvtRwSet := sampleTxPvtRwSet()
@@ -243,16 +243,6 @@ func TestVersionConversion(t *testing.T) {
 	// convert internal to proto
 	require.Nil(t, newProtoVersion(nil))
 	require.Equal(t, protoVer, newProtoVersion(internalVer))
-}
-
-func TestNewKVWriteHashPurge(t *testing.T) {
-	sampleKey := "purge-key1"
-	sampleKVWriteHash := &kvrwset.KVWriteHash{
-		KeyHash:  util.ComputeStringHash(sampleKey),
-		IsDelete: true,
-		IsPurge:  true,
-	}
-	require.Equal(t, sampleKVWriteHash, newKVWriteHashPurge(sampleKey))
 }
 
 func TestIsDelete(t *testing.T) {

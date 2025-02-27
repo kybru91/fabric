@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/golang/protobuf/proto"
-	cb "github.com/hyperledger/fabric-protos-go/common"
+	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"google.golang.org/protobuf/proto"
 )
 
-// DeserializeGroup deserializes the value for all values in a config group
+// DeserializeProtoValuesFromGroup deserializes the value for all values in a config group
 func DeserializeProtoValuesFromGroup(group *cb.ConfigGroup, protosStructs ...interface{}) error {
 	sv, err := NewStandardValues(protosStructs...)
 	if err != nil {
@@ -55,7 +55,7 @@ func NewStandardValues(protosStructs ...interface{}) (*StandardValues, error) {
 
 // Deserialize looks up the backing Values proto of the given name, unmarshals the given bytes
 // to populate the backing message structure, and returns a referenced to the retained deserialized
-// message (or an error, either because the key did not exist, or there was an an error unmarshalling
+// message (or an error, either because the key did not exist, or there was an error unmarshalling
 func (sv *StandardValues) Deserialize(key string, value []byte) (proto.Message, error) {
 	msg, ok := sv.lookup[key]
 	if !ok {

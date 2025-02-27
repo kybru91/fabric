@@ -12,10 +12,11 @@ import (
 	"math"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -33,6 +34,7 @@ var (
 	hashedIndexKeyPrefix             = []byte{'b'}
 	purgeMarkerKeyPrefix             = []byte{'c'}
 	purgeMarkerCollKeyPrefix         = []byte{'d'}
+	purgeMarkerForReconKeyPrefix     = []byte{'e'}
 
 	nilByte    = byte(0)
 	emptyValue = []byte{}
@@ -51,11 +53,14 @@ func getExpiryKeysForRangeScan(minBlkNum, maxBlkNum uint64) ([]byte, []byte) {
 }
 
 func encodeLastCommittedBlockVal(blockNum uint64) []byte {
-	return proto.EncodeVarint(blockNum)
+	return protowire.AppendVarint(nil, blockNum)
 }
 
 func decodeLastCommittedBlockVal(blockNumBytes []byte) uint64 {
-	s, _ := proto.DecodeVarint(blockNumBytes)
+	s, num := protowire.ConsumeVarint(blockNumBytes)
+	if num < 0 {
+		return 0
+	}
 	return s
 }
 
@@ -67,6 +72,9 @@ func encodeDataKey(key *dataKey) []byte {
 }
 
 func encodeDataValue(collData *rwset.CollectionPvtReadWriteSet) ([]byte, error) {
+	if collData == nil {
+		return nil, errors.New("proto: Marshal called with nil")
+	}
 	return proto.Marshal(collData)
 }
 
@@ -76,6 +84,9 @@ func encodeExpiryKey(expiryKey *expiryKey) []byte {
 }
 
 func encodeExpiryValue(expiryData *ExpiryData) ([]byte, error) {
+	if expiryData == nil {
+		return nil, errors.New("proto: Marshal called with nil")
+	}
 	return proto.Marshal(expiryData)
 }
 
@@ -150,7 +161,7 @@ func encodeInelgMissingDataKey(key *missingDataKey) []byte {
 	encKey = append(encKey, nilByte)
 	encKey = append(encKey, []byte(key.coll)...)
 	encKey = append(encKey, nilByte)
-	return append(encKey, []byte(encodeReverseOrderVarUint64(key.blkNum))...)
+	return append(encKey, encodeReverseOrderVarUint64(key.blkNum)...)
 }
 
 func decodeInelgMissingDataKey(keyBytes []byte) *missingDataKey {
@@ -184,6 +195,9 @@ func decodeCollElgKey(b []byte) uint64 {
 }
 
 func encodeCollElgVal(m *CollElgInfo) ([]byte, error) {
+	if m == nil {
+		return nil, errors.New("proto: Marshal called with nil")
+	}
 	return proto.Marshal(m)
 }
 
@@ -203,6 +217,9 @@ func encodeBootKVHashesKey(key *bootKVHashesKey) []byte {
 }
 
 func encodeBootKVHashesVal(val *BootKVHashes) ([]byte, error) {
+	if val == nil {
+		return nil, errors.New("error while marshalling BootKVHashes: proto: Marshal called with nil")
+	}
 	b, err := proto.Marshal(val)
 	if err != nil {
 		return nil, errors.Wrap(err, "error while marshalling BootKVHashes")
@@ -219,12 +236,12 @@ func decodeBootKVHashesVal(b []byte) (*BootKVHashes, error) {
 }
 
 func encodeLastBlockInBootSnapshotVal(blockNum uint64) []byte {
-	return proto.EncodeVarint(blockNum)
+	return protowire.AppendVarint(nil, blockNum)
 }
 
 func decodeLastBlockInBootSnapshotVal(blockNumBytes []byte) (uint64, error) {
-	s, n := proto.DecodeVarint(blockNumBytes)
-	if n == 0 {
+	s, n := protowire.ConsumeVarint(blockNumBytes)
+	if n <= 0 {
 		return 0, errors.New("unexpected bytes for interpreting as varint")
 	}
 	return s, nil
@@ -302,15 +319,49 @@ func encodePurgeMarkerKey(k *purgeMarkerKey) []byte {
 	return encKey
 }
 
+func encodePurgeMarkerForReconKey(k *purgeMarkerKey) []byte {
+	encKey := append(purgeMarkerForReconKeyPrefix, []byte(k.ns)...)
+	encKey = append(encKey, nilByte)
+	encKey = append(encKey, []byte(k.coll)...)
+	encKey = append(encKey, nilByte)
+	encKey = append(encKey, k.pvtkeyHash...)
+	return encKey
+}
+
 func rangeScanKeysForPurgeMarkers() ([]byte, []byte) {
 	return purgeMarkerKeyPrefix, []byte{purgeMarkerKeyPrefix[0] + 1}
 }
 
 // driveHashedIndexKeyRangeFromPurgeMarker returns the scan range for hashedIndexKeys for a key specified by the `purgeMarkerKey`.
 // The range covers all the hashedIndexKeys between block 0 and the height specified in the `purgeMarkerVal`
-func driveHashedIndexKeyRangeFromPurgeMarker(purgeMarkerKey, purgeMarkerVal []byte) ([]byte, []byte) {
+func driveHashedIndexKeyRangeFromPurgeMarker(purgeMarkerKey, purgeMarkerVal []byte) ([]byte, []byte, error) {
 	startKey := append(hashedIndexKeyPrefix, purgeMarkerKey[1:]...)
-	endKey := append(startKey, purgeMarkerVal...)
+	version, err := decodePurgeMarkerVal(purgeMarkerVal)
+	if err != nil {
+		return nil, nil, err
+	}
+	version.TxNum += 1 // increase transaction by one so that the private key for the purge operation itself is also included
+	endKey := append(startKey, version.ToBytes()...)
+	return startKey, endKey, nil
+}
+
+func rangeScanKeysForHashedIndexKey(ns, coll string, keyHash []byte) ([]byte, []byte) {
+	startKey := encodeHashedIndexKey(
+		&hashedIndexKey{
+			ns:         ns,
+			coll:       coll,
+			pvtkeyHash: keyHash,
+		},
+	)
+	endKey := encodeHashedIndexKey(
+		&hashedIndexKey{
+			ns:         ns,
+			coll:       coll,
+			pvtkeyHash: keyHash,
+			blkNum:     math.MaxUint64,
+			txNum:      math.MaxUint64,
+		},
+	)
 	return startKey, endKey
 }
 
@@ -373,7 +424,7 @@ func encodeReverseOrderVarUint64(number uint64) []byte {
 	}
 	size := 8 - numFFBytes
 	encodedBytes := make([]byte, size+1)
-	encodedBytes[0] = proto.EncodeVarint(uint64(numFFBytes))[0]
+	encodedBytes[0] = protowire.AppendVarint(nil, uint64(numFFBytes))[0]
 	copy(encodedBytes[1:], bytes[numFFBytes:])
 	return encodedBytes
 }
@@ -381,7 +432,10 @@ func encodeReverseOrderVarUint64(number uint64) []byte {
 // decodeReverseOrderVarUint64 decodes the number from the bytes obtained from function 'EncodeReverseOrderVarUint64'.
 // Also, returns the number of bytes that are consumed in the process
 func decodeReverseOrderVarUint64(bytes []byte) (uint64, int) {
-	s, _ := proto.DecodeVarint(bytes)
+	s, num := protowire.ConsumeVarint(bytes)
+	if num < 0 {
+		s = 0
+	}
 	numFFBytes := int(s)
 	decodedBytes := make([]byte, 8)
 	realBytesNum := 8 - numFFBytes
@@ -390,5 +444,5 @@ func decodeReverseOrderVarUint64(bytes []byte) (uint64, int) {
 	for i := 0; i < numFFBytes; i++ {
 		decodedBytes[i] = 0xff
 	}
-	return (math.MaxUint64 - binary.BigEndian.Uint64(decodedBytes)), numBytesConsumed
+	return math.MaxUint64 - binary.BigEndian.Uint64(decodedBytes), numBytesConsumed
 }

@@ -11,12 +11,11 @@ import (
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/hyperledger/fabric/common/flogging/floggingtest"
+	"github.com/hyperledger/fabric-lib-go/common/flogging/floggingtest"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset/kvrwset"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/common/ledger/testutil"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -29,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestValidateAndPreparePvtBatch(t *testing.T) {
@@ -138,7 +138,7 @@ func TestPreprocessProtoBlock(t *testing.T) {
 		return nil
 	}
 	// good block
-	//_, gb := testutil.NewBlockGenerator(t, "testLedger", false)
+	// _, gb := testutil.NewBlockGenerator(t, "testLedger", false)
 	gb := testutil.ConstructTestBlock(t, 10, 1, 1)
 	_, _, err := preprocessProtoBlock(nil, allwaysValidKVfunc, gb, false, nil)
 	require.NoError(t, err)
@@ -300,7 +300,7 @@ func TestTxStatsInfoWithConfigTx(t *testing.T) {
 	v := NewCommitBatchPreparer(nil, testDB, nil, testHashFunc)
 
 	gb := testutil.ConstructTestBlocks(t, 1)[0]
-	_, txStatsInfo, err := v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: gb}, true)
+	_, _, txStatsInfo, err := v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: gb}, true)
 	require.NoError(t, err)
 	txID, err := protoutil.GetOrComputeTxIDFromEnvelope(gb.Data.Data[0])
 	require.NoError(t, err)
@@ -343,12 +343,12 @@ func TestTXMgrContainsPostOrderWrites(t *testing.T) {
 				rwSetBuilder.GetTxSimulationResults())
 			return nil
 		}
-	batch, _, err := v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blocks[0]}, true)
+	batch, _, _, err := v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blocks[0]}, true)
 	require.NoError(t, err)
 	require.True(t, batch.PubUpdates.ContainsPostOrderWrites)
 
 	// block with endorser txs
-	batch, _, err = v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blocks[1]}, true)
+	batch, _, _, err = v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blocks[1]}, true)
 	require.NoError(t, err)
 	require.False(t, batch.PubUpdates.ContainsPostOrderWrites)
 
@@ -358,7 +358,7 @@ func TestTXMgrContainsPostOrderWrites(t *testing.T) {
 			s.(*mocklgr.TxSimulator).GetTxSimulationResultsReturns(nil, nil)
 			return &ledger.InvalidTxError{Msg: "fake-message"}
 		}
-	batch, _, err = v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blocks[0]}, true)
+	batch, _, _, err = v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blocks[0]}, true)
 	require.NoError(t, err)
 	require.False(t, batch.PubUpdates.ContainsPostOrderWrites)
 }
@@ -448,7 +448,7 @@ func TestTxStatsInfo(t *testing.T) {
 	blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txsFilter
 
 	// collect the validation stats for the block and check against the expected stats
-	_, txStatsInfo, err := v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blk}, true)
+	_, _, txStatsInfo, err := v.ValidateAndPrepareBatch(&ledger.BlockAndPvtData{Block: blk}, true)
 	require.NoError(t, err)
 	expectedTxStatInfo := []*TxStatInfo{
 		{
@@ -479,7 +479,15 @@ func TestTxStatsInfo(t *testing.T) {
 		},
 	}
 	t.Logf("txStatsInfo=%s\n", spew.Sdump(txStatsInfo))
-	require.Equal(t, expectedTxStatInfo, txStatsInfo)
+	require.Equal(t, len(expectedTxStatInfo), len(txStatsInfo))
+	for i := 0; i < len(expectedTxStatInfo); i++ {
+		require.Equal(t, expectedTxStatInfo[i].TxIDFromChannelHeader, txStatsInfo[i].TxIDFromChannelHeader)
+		require.Equal(t, expectedTxStatInfo[i].ValidationCode, txStatsInfo[i].ValidationCode)
+		require.Equal(t, expectedTxStatInfo[i].TxType, txStatsInfo[i].TxType)
+		require.Equal(t, expectedTxStatInfo[i].ChaincodeEventData, txStatsInfo[i].ChaincodeEventData)
+		require.Equal(t, expectedTxStatInfo[i].NumCollections, txStatsInfo[i].NumCollections)
+		require.True(t, proto.Equal(expectedTxStatInfo[i].ChaincodeID, txStatsInfo[i].ChaincodeID))
+	}
 }
 
 func testutilSampleTxSimulationResults(t *testing.T, key string) *ledger.TxSimulationResults {
@@ -672,6 +680,13 @@ func Test_preprocessProtoBlock_processNonEndorserTx(t *testing.T) {
 
 	// Check result
 	require.NoError(t, err2)
-	require.Equal(t, expectedPreprocessedBlock, internalBlock)
+	require.Equal(t, expectedPreprocessedBlock.num, internalBlock.num)
+	require.Equal(t, len(expectedPreprocessedBlock.txs), len(internalBlock.txs))
+	require.Equal(t, expectedPreprocessedBlock.txs[0].indexInBlock, internalBlock.txs[0].indexInBlock)
+	require.Equal(t, expectedPreprocessedBlock.txs[0].id, internalBlock.txs[0].id)
+	require.Equal(t, expectedPreprocessedBlock.txs[0].containsPostOrderWrites, internalBlock.txs[0].containsPostOrderWrites)
+	require.Equal(t, expectedPreprocessedBlock.txs[0].rwset.NsRwSets[0].NameSpace, internalBlock.txs[0].rwset.NsRwSets[0].NameSpace)
+	require.True(t, proto.Equal(expectedPreprocessedBlock.txs[0].rwset.NsRwSets[0].KvRwSet, internalBlock.txs[0].rwset.NsRwSets[0].KvRwSet))
+
 	require.Equal(t, expectedTxStatInfo, txsStatInfo)
 }

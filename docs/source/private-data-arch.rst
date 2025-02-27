@@ -166,7 +166,8 @@ Since implicit private data collections are not explicitly defined,
 it is not possible to set the additional collection properties. Specifically,
 ``memberOnlyRead`` and ``memberOnlyWrite`` are not available,
 meaning that access control for clients reading data from or writing data to
-an implicit private data collection must be encoded in the chaincode on the organization's peer.
+an implicit private data collection must be encoded in the `chaincode logic <chaincode4ade.html#chaincode-access-control>`_
+on the organization's peer.
 Furthermore, ``blockToLive`` is not available, meaning that private data is never automatically purged.
 
 The properties ``requiredPeerCount`` and ``maxPeerCount`` can however be set in the peer's core.yaml
@@ -325,8 +326,8 @@ configuration definitions and how to set them, refer back to the
 .. note:: If you would like more granular access control, you can set
           ``memberOnlyRead`` and ``memberOnlyWrite`` to false (implicit collections always
           behave as if ``memberOnlyRead`` and ``memberOnlyWrite`` are false). You can then apply your
-          own access control logic in chaincode, for example by calling the GetCreator()
-          chaincode API or using the client identity
+          own `access control logic in chaincode <chaincode4ade.html#chaincode-access-control>`_,
+          for example by calling the GetCreator() chaincode API or using the client identity
           `chaincode library <https://godoc.org/github.com/hyperledger/fabric-chaincode-go/shim#ChaincodeStub.GetCreator>`__ .
 
 Querying Private Data
@@ -372,7 +373,7 @@ applied to the channel’s state database to enable JSON content queries, by
 packaging indexes in a ``META-INF/statedb/couchdb/indexes`` directory at chaincode
 installation time.  Similarly, indexes can also be applied to private data
 collections that are explicitly defined, by packaging indexes in a ``META-INF/statedb/couchdb/collections/<collection_name>/indexes``
-directory. An example index is available `here <https://github.com/hyperledger/fabric-samples/blob/{BRANCH}/chaincode/marbles02_private/go/META-INF/statedb/couchdb/collections/collectionMarbles/indexes/indexOwner.json>`_.
+directory. An example index is available `here <https://github.com/hyperledger/fabric-samples/blob/main/asset-transfer-private-data/chaincode-go/META-INF/statedb/couchdb/collections/assetCollection/indexes/indexOwner.json>`_.
 
 Considerations when using private data
 --------------------------------------
@@ -380,10 +381,31 @@ Considerations when using private data
 Private data purging
 ~~~~~~~~~~~~~~~~~~~~
 
-Private data in explicitly defined private data collections can be periodically purged from peers.
+Private data can be purged from peers so that it is not available for chaincode queries, not available in block events, and not available for other peers requesting the private data.
+
+**Purging private data in chaincode**
+
+Private data can be deleted from state just like regular state data so that it is not available for query in chaincode for future transactions.
+However, when private data is simply deleted from state, the history of the private data remains in the peer's private database so that it can be returned in block events and returned to other peers that are catching up to the current block height.
+If you need to completely remove the private data from all peers that have access to it, use the chaincode API ``PurgePrivateData`` instead of the ``DelPrivateData`` API.
+
+The ``PurgePrivateData`` chaincode API is available starting in Fabric v2.5. To ensure that all peers are at v2.5 or later, the application capability ``V2_5`` or higher must be set in the channel's configuration before using the feature.
+
+Private data is purged from a peer's private database at the time of block commit.
+For more efficiency, the purge requests can be processed at certain block intervals based on the ``ledger.pvtdataStore.purgeInterval`` setting in the peer ``core.yaml`` configuration, with a default of purging every 100 blocks.
+To process purge requests every block set ``ledger.pvtdataStore.purgeInterval`` to ``1``.
+Regardless of the ``purgeInterval`` setting, the associated private data state will be deleted from the state database upon every block commit so that it is not available for subsequent transaction endorsements or queries.
+Similarly, any purged private data will not be returned in block events or returned to other peers requesting it.
+Only the historical values in the private database will remain until the next ``purgeInterval``.
+
+**Purging private data automatically**
+
+Private data in explicitly defined private data collections can be periodically purged from peers if it has not been modified for a configurable number of blocks.
 For more details, see the ``blockToLive`` collection definition property above.
 
-Additionally, recall that prior to commit, peers store private data in a local
+**Purging uncommitted private data**
+
+Recall that prior to commit, peers store private data in a local
 transient data store. This data automatically gets purged when the transaction
 commits.  But if a transaction was never submitted to the channel and
 therefore never committed, the private data would remain in each peer’s

@@ -9,10 +9,10 @@ package validation
 import (
 	"bytes"
 
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate"
@@ -70,13 +70,14 @@ func NewCommitBatchPreparer(
 
 // ValidateAndPrepareBatch performs validation of transactions in the block and prepares the batch of final writes
 func (p *CommitBatchPreparer) ValidateAndPrepareBatch(blockAndPvtdata *ledger.BlockAndPvtData,
-	doMVCCValidation bool) (*privacyenabledstate.UpdateBatch, []*TxStatInfo, error) {
+	doMVCCValidation bool) (*privacyenabledstate.UpdateBatch, []*AppInitiatedPurgeUpdate, []*TxStatInfo, error) {
 	blk := blockAndPvtdata.Block
 	logger.Debugf("ValidateAndPrepareBatch() for block number = [%d]", blk.Header.Number)
 	var internalBlock *block
 	var txsStatInfo []*TxStatInfo
 	var pubAndHashUpdates *publicAndHashUpdates
 	var pvtUpdates *privacyenabledstate.PvtUpdateBatch
+	var purgeUpdates []*AppInitiatedPurgeUpdate
 	var err error
 
 	logger.Debug("preprocessing ProtoBlock...")
@@ -87,11 +88,11 @@ func (p *CommitBatchPreparer) ValidateAndPrepareBatch(blockAndPvtdata *ledger.Bl
 		doMVCCValidation,
 		p.customTxProcessors,
 	); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	if pubAndHashUpdates, err = p.validator.validateAndPrepareBatch(internalBlock, doMVCCValidation); err != nil {
-		return nil, nil, err
+	if pubAndHashUpdates, purgeUpdates, err = p.validator.validateAndPrepareBatch(internalBlock, doMVCCValidation); err != nil {
+		return nil, nil, nil, err
 	}
 	logger.Debug("validating rwset...")
 	if pvtUpdates, err = validateAndPreparePvtBatch(
@@ -100,7 +101,7 @@ func (p *CommitBatchPreparer) ValidateAndPrepareBatch(blockAndPvtdata *ledger.Bl
 		pubAndHashUpdates,
 		blockAndPvtdata.PvtData,
 	); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	logger.Debug("postprocessing ProtoBlock...")
 	postprocessProtoBlock(blk, internalBlock)
@@ -114,7 +115,7 @@ func (p *CommitBatchPreparer) ValidateAndPrepareBatch(blockAndPvtdata *ledger.Bl
 		PubUpdates:  pubAndHashUpdates.publicUpdates,
 		HashUpdates: pubAndHashUpdates.hashUpdates,
 		PvtUpdates:  pvtUpdates,
-	}, txsStatInfo, nil
+	}, purgeUpdates, txsStatInfo, nil
 }
 
 // validateAndPreparePvtBatch pulls out the private write-set for the transactions that are marked as valid
@@ -289,7 +290,7 @@ func processNonEndorserTx(
 	txid string,
 	txType common.HeaderType,
 	postOrderSimulatorProvider PostOrderSimulatorProvider,
-	synchingState bool,
+	syncingState bool,
 	customTxProcessors map[common.HeaderType]ledger.CustomTxProcessor,
 ) (*rwset.TxReadWriteSet, error) {
 	logger.Debugf("Performing custom processing for transaction [txid=%s], [txType=%s]", txid, txType)
@@ -306,7 +307,7 @@ func processNonEndorserTx(
 		return nil, err
 	}
 	defer sim.Done()
-	if err = processor.GenerateSimulationResults(txEnv, sim, synchingState); err != nil {
+	if err = processor.GenerateSimulationResults(txEnv, sim, syncingState); err != nil {
 		return nil, err
 	}
 	if simRes, err = sim.GetTxSimulationResults(); err != nil {

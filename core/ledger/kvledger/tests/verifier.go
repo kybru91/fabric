@@ -10,14 +10,14 @@ import (
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
-	"github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset"
-	protopeer "github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/queryresult"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset/kvrwset"
+	protopeer "github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 // verifier provides functions that help tests with less verbose code for querying the ledger
@@ -230,6 +230,25 @@ func (r *retrievedBlockAndPvtdata) pvtdataShouldContain(txSeq int, ns, coll, key
 		}
 	}
 	r.assert.FailNow("Requested kv not found")
+}
+
+func (r *retrievedBlockAndPvtdata) pvtdataShouldNotContainKey(ns, coll, key string) {
+	allTxPvtData := r.BlockAndPvtData.PvtData
+	for _, txPvtData := range allTxPvtData {
+		for _, nsdata := range txPvtData.WriteSet.NsPvtRwset {
+			if nsdata.Namespace == ns {
+				for _, colldata := range nsdata.CollectionPvtRwset {
+					if colldata.CollectionName == coll {
+						rwset := &kvrwset.KVRWSet{}
+						r.assert.NoError(proto.Unmarshal(colldata.Rwset, rwset))
+						for _, w := range rwset.Writes {
+							r.assert.NotEqual(w.Key, key)
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func (r *retrievedBlockAndPvtdata) pvtdataShouldNotContain(ns, coll string) {

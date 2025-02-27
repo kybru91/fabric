@@ -7,10 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package pvtdatastorage
 
 import (
+	"math"
 	"path"
 	"testing"
 
-	"github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/confighistory/confighistorytest"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -103,9 +104,9 @@ func TestPvtdataStoreCreatedFromSnapshot(t *testing.T) {
 		require.False(t, isEmpty)
 		require.Equal(t, uint64(25), lastBlkNum)
 
-		err = store.Commit(25, nil, nil)
+		err = store.Commit(25, nil, nil, nil)
 		require.EqualError(t, err, "expected block number=26, received block number=25")
-		require.NoError(t, store.Commit(26, nil, nil))
+		require.NoError(t, store.Commit(26, nil, nil, nil))
 	})
 
 	t.Run("fetch-bootkv-hashes", func(t *testing.T) {
@@ -195,7 +196,7 @@ func TestPvtdataStoreCreatedFromSnapshot(t *testing.T) {
 			m,
 		)
 
-		missingDataInfo, err := store.GetMissingPvtDataInfoForMostRecentBlocks(4)
+		missingDataInfo, err := store.GetMissingPvtDataInfoForMostRecentBlocks(math.MaxUint64, 4)
 		require.NoError(t, err)
 		require.Equal(
 			t,
@@ -233,7 +234,7 @@ func TestPvtdataStoreCreatedFromSnapshot(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		missingDataInfo, err = store.GetMissingPvtDataInfoForMostRecentBlocks(4)
+		missingDataInfo, err = store.GetMissingPvtDataInfoForMostRecentBlocks(math.MaxUint64, 4)
 		require.NoError(t, err)
 		require.Len(t, missingDataInfo, 0)
 
@@ -294,7 +295,7 @@ func TestPvtdataStoreCreatedFromSnapshot(t *testing.T) {
 		// commit 100 blocks and the bootkvhashes should expire
 		store.purgeInterval = 10
 		for i := 0; i < 100; i++ {
-			require.NoError(t, store.Commit(uint64(26+i), nil, nil))
+			require.NoError(t, store.Commit(uint64(26+i), nil, nil, nil))
 		}
 
 		m, err = store.FetchBootKVHashes(20, 200, "ns", "eligible-coll")
